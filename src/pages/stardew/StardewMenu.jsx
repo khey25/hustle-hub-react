@@ -3,16 +3,13 @@ import StardewLayout from './StardewLayout';
 import VideoCard from '../../components/VideoCard';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
-
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
+import { fetchTieredData } from '../../supabaseClient';
 
 export default function StardewMenu() {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
 
-    // Stardew uses a static video background, not crossfading images
     const bgVideo = "https://github.com/khey25/legaspi_prelimfastapi/raw/refs/heads/main/stardew/stardewvideo/stardewmenu.mp4";
 
     const handleSearch = async (searchTerm) => {
@@ -27,15 +24,11 @@ export default function StardewMenu() {
         setIsSearching(true);
         try {
             // Concurrently fetch from all 3 Stardew APIs
-            const [cropsRes, artisanRes, animalRes] = await Promise.all([
-                fetch(`${API_URL}/stardew/crops/search?q=${query}`, FETCH_OPTIONS),
-                fetch(`${API_URL}/stardew/artisan_goods/search?q=${query}`, FETCH_OPTIONS),
-                fetch(`${API_URL}/stardew/animal_products/search?q=${query}`, FETCH_OPTIONS)
+            const [cropsData, artisanData, animalData] = await Promise.all([
+                fetchTieredData('stardew_crops', query),
+                fetchTieredData('stardew_artisan_goods', query),
+                fetchTieredData('stardew_animal_products', query)
             ]);
-
-            const cropsData = await cropsRes.json();
-            const artisanData = await artisanRes.json();
-            const animalData = await animalRes.json();
 
             let combined = [];
             if (cropsData) Object.values(cropsData).forEach(tier => combined.push(...tier));
@@ -56,7 +49,6 @@ export default function StardewMenu() {
             </h2>
             
             {!isSearching ? (
-                // DEFAULT STATE: Stardew doesn't use videos on these cards, just images, so we pass empty strings for videoSrc
                 <div className="flex flex-col md:flex-row justify-between gap-[30px] w-full mt-[30px]">
                     <VideoCard 
                         imageSrc="https://github.com/khey25/legaspi_prelimfastapi/blob/main/stardew/stardewimages/starfruit.jpg?raw=true"
@@ -81,7 +73,6 @@ export default function StardewMenu() {
                     />
                 </div>
             ) : (
-                // SEARCH STATE: Grid of actionable item cards
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,350px))] justify-center gap-5 w-full">
                     {searchResults.length > 0 ? (
                         searchResults.map(item => (

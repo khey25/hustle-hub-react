@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DetailModal from '../../components/DetailModal';
+import { fetchTieredData } from '../../supabaseClient';
 
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
-
-// Generalized questions array from your original vanilla JS
 const questions = [
     {
         question: "Which universe are you stepping into today?",
@@ -46,8 +43,7 @@ const questions = [
 export default function Matchmaker() {
     const navigate = useNavigate();
     
-    // State Management
-    const [step, setStep] = useState('welcome'); // 'welcome' | 'quiz' | 'results' | 'loading'
+    const [step, setStep] = useState('welcome');
     const [currentQ, setCurrentQ] = useState(0);
     const [prefs, setPrefs] = useState({ game: null, budget: null, solo: null, passive: null });
     const [results, setResults] = useState([]);
@@ -66,7 +62,6 @@ export default function Matchmaker() {
         if (currentQ + 1 < questions.length) {
             setCurrentQ(currentQ + 1);
         } else {
-            // Quiz finished, run algorithm
             setStep('loading');
             await calculateMatch(updatedPrefs);
         }
@@ -74,15 +69,22 @@ export default function Matchmaker() {
 
     const calculateMatch = async (finalPrefs) => {
         try {
-            let fetchUrls = [];
+            let fetchPromises = [];
             if (finalPrefs.game === "gta") {
-                fetchUrls = [`${API_URL}/gta/businesses`, `${API_URL}/gta/heists`, `${API_URL}/gta/contact`];
+                fetchPromises = [
+                    fetchTieredData('gta_businesses'),
+                    fetchTieredData('gta_heists'),
+                    fetchTieredData('gta_contact')
+                ];
             } else if (finalPrefs.game === "stardew") {
-                fetchUrls = [`${API_URL}/stardew/crops`, `${API_URL}/stardew/artisan_goods`, `${API_URL}/stardew/animal_products`];
+                fetchPromises = [
+                    fetchTieredData('stardew_crops'),
+                    fetchTieredData('stardew_artisan_goods'),
+                    fetchTieredData('stardew_animal_products')
+                ];
             }
 
-            const responses = await Promise.all(fetchUrls.map(url => fetch(url, FETCH_OPTIONS)));
-            const dataSets = await Promise.all(responses.map(res => res.json()));
+            const dataSets = await Promise.all(fetchPromises);
 
             let allItems = [];
             dataSets.forEach(category => {
@@ -91,13 +93,11 @@ export default function Matchmaker() {
                 }
             });
 
-            // The Weighted Algorithm
             let validItems = [];
             allItems.forEach(item => {
-                if (item.setup_cost > finalPrefs.budget) return; // Hard Rule
+                if (item.setup_cost > finalPrefs.budget) return;
 
                 let score = 0;
-                // Soft Rules
                 if (finalPrefs.game === "gta") {
                     if (item.solo_friendly === finalPrefs.solo) score += 10;
                     if (item.is_passive === finalPrefs.passive) score += 10;
@@ -123,7 +123,6 @@ export default function Matchmaker() {
     const currentQuestionData = questions[currentQ];
     const hasImages = currentQuestionData.options.some(opt => opt.img);
 
-    // Carousel images array
     const carouselImages = [
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/menuimages/gtaonline.jpg?raw=true",
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/menuimages/stardew.jpg?raw=true",
@@ -136,7 +135,6 @@ export default function Matchmaker() {
     return (
         <div className="min-h-screen text-white flex flex-col items-center p-5 relative overflow-x-hidden font-sans">
             
-            {/* Golden Pulsating Background */}
             <div className="fixed top-0 left-0 w-[100vw] h-[100vh] -z-10 bg-[#0b0310] flex justify-center items-center overflow-hidden">
                 <div className="w-[50vw] h-[50vw] max-w-[800px] max-h-[800px] rounded-full animate-pulse-glow" style={{ background: 'radial-gradient(circle, rgba(255, 235, 59, 0.25) 0%, rgba(255, 235, 59, 0) 70%)' }}></div>
             </div>
@@ -146,14 +144,13 @@ export default function Matchmaker() {
                     THE HUSTLE MATCH
                 </h1>
                 <button 
-                    onClick={() => navigate('/')} 
+                    onClick={() => navigate('/hub')} 
                     className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white rounded-lg shadow-[0_4px_6px_rgb(0,0,0)] hover:bg-[#8a2be2] transition-colors mx-auto block mb-10"
                 >
                     Return to Hub
                 </button>
             </header>
 
-            {/* WELCOME / QUIZ CONTAINER */}
             {(step === 'welcome' || step === 'quiz') && (
                 <main className="bg-[#1a1a1a]/80 backdrop-blur-md border-2 border-[#be70f1] rounded-xl p-[50px] w-[90%] max-w-[800px] text-center shadow-[0_0_20px_rgba(255,235,59,0.3)] transition-opacity duration-500">
                     <h2 className="text-[2.2rem] mb-[30px] text-[#eeeeee] font-bold">
@@ -197,7 +194,6 @@ export default function Matchmaker() {
                     {step === 'welcome' && (
                         <div className="w-full overflow-hidden mt-[50px] relative [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
                             <div className="flex gap-5 w-max animate-scroll-carousel">
-                                {/* Map the images twice for the seamless infinite scroll loop */}
                                 {[...carouselImages, ...carouselImages].map((src, i) => (
                                     <img 
                                         key={i} 
@@ -221,14 +217,12 @@ export default function Matchmaker() {
                 </main>
             )}
 
-            {/* LOADING STATE */}
             {step === 'loading' && (
                 <main className="w-full max-w-[1200px] text-center animate-fade-in-up">
                     <h2 className="text-[2.2rem] text-[#eeeeee] font-bold">Fetching data...</h2>
                 </main>
             )}
 
-            {/* RESULTS CONTAINER */}
             {step === 'results' && (
                 <main className="w-full max-w-[1200px] text-center animate-fade-in-up">
                     <h2 className="text-[2.2rem] mb-[30px] text-[#eeeeee] font-bold">Your Top Recommended Grinds</h2>
@@ -263,9 +257,7 @@ export default function Matchmaker() {
                 </main>
             )}
 
-            {/* Split Screen Pop-up Recycled from components! */}
             <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
-
         </div>
     );
 }

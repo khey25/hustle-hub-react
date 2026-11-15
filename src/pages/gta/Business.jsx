@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import GTALayout from './GTALayout';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
-
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
+import { fetchTieredData } from '../../supabaseClient';
 
 export default function Business() {
     const [data, setData] = useState(null);
@@ -16,26 +14,20 @@ export default function Business() {
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/weed.jpg?raw=true"
     ];
 
-    // Initial Load
+    // Initial Load from Supabase
     useEffect(() => {
-        fetch(`${API_URL}/gta/businesses`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
-            .catch(err => console.error("API Error:", err));
+        fetchTieredData('gta_businesses')
+            .then(groupedData => setData(groupedData))
+            .catch(err => console.error("Supabase Error:", err));
     }, []);
 
-    // Search Logic (Passed to Layout)
+    // Search Logic from Supabase
     const handleSearch = (searchTerm) => {
-        const query = searchTerm.trim();
-        const endpoint = query ? `/gta/businesses/search?q=${query}` : `/gta/businesses`;
-        
-        fetch(`${API_URL}${endpoint}`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
+        fetchTieredData('gta_businesses', searchTerm)
+            .then(groupedData => setData(groupedData))
             .catch(err => console.error("Search Error:", err));
     };
 
-    // Reusable UI Builder for each Tier
     const renderTier = (title, items, colorClass) => {
         if (!items || items.length === 0) return null;
         return (
@@ -54,8 +46,6 @@ export default function Business() {
 
     return (
         <GTALayout title="Business huh? Sounds Boring..." backgrounds={backgrounds} onSearch={handleSearch}>
-            
-            {/* Display Tiers if Data Exists */}
             {data ? (
                 <>
                     {renderTier("Suspiciously Profitable", data["Suspiciously Profitable"], "text-[#4CAF50] animate-pulse-green")}
@@ -66,13 +56,11 @@ export default function Business() {
                 <p className="text-xl text-gray-400 mt-10">Loading businesses...</p>
             )}
 
-            {/* Split Screen Pop-up */}
             <DetailModal 
                 isOpen={!!selectedItem} 
                 data={selectedItem} 
                 onClose={() => setSelectedItem(null)} 
             />
-
         </GTALayout>
     );
 }

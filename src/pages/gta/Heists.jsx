@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import GTALayout from './GTALayout';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
-
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
+import { fetchTieredData } from '../../supabaseClient';
 
 export default function Heists() {
     const [data, setData] = useState(null);
@@ -17,26 +15,18 @@ export default function Heists() {
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/doomsday.jpg?raw=true"
     ];
 
-    // Initial Load
     useEffect(() => {
-        fetch(`${API_URL}/gta/heists`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
+        fetchTieredData('gta_heists')
+            .then(groupedData => setData(groupedData))
             .catch(err => console.error("API Error:", err));
     }, []);
 
-    // Search Logic (Passed to Layout)
     const handleSearch = (searchTerm) => {
-        const query = searchTerm.trim();
-        const endpoint = query ? `/gta/heists/search?q=${query}` : `/gta/heists`;
-        
-        fetch(`${API_URL}${endpoint}`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
+        fetchTieredData('gta_heists', searchTerm)
+            .then(groupedData => setData(groupedData))
             .catch(err => console.error("Search Error:", err));
     };
 
-    // Reusable UI Builder for each Tier
     const renderTier = (title, items, colorClass) => {
         if (!items || items.length === 0) return null;
         return (
@@ -55,7 +45,6 @@ export default function Heists() {
 
     return (
         <GTALayout title="Be careful who you steal from... Anyways!" backgrounds={backgrounds} onSearch={handleSearch}>
-            
             {data ? (
                 <>
                     {renderTier("Billionaire Amongst Millionaires", data["Billionaire Amongst Millionaires"], "text-[#4CAF50] animate-pulse-green")}
@@ -65,9 +54,7 @@ export default function Heists() {
             ) : (
                 <p className="text-xl text-gray-400 mt-10">Loading heists...</p>
             )}
-
             <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
-
         </GTALayout>
     );
 }

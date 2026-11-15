@@ -45,7 +45,7 @@ export default function StardewLayout({ title, bgVideo, children, onSearch }) {
             Categories
           </button>
           <button 
-            onClick={() => navigate('/')} 
+            onClick={() => navigate('/hub')} 
             className={`py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white border-2 border-transparent rounded-lg shadow-[0_4px_6px_rgb(0,0,0)] transition-all duration-200 ${stardewHover} hover:bg-[#8a2be2]`}
           >
             Home

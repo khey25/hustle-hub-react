@@ -3,9 +3,7 @@ import GTALayout from './GTALayout';
 import VideoCard from '../../components/VideoCard';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
-
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
+import { fetchTieredData } from '../../supabaseClient';
 
 export default function GTAMenu() {
     const [searchResults, setSearchResults] = useState([]);
@@ -25,7 +23,6 @@ export default function GTAMenu() {
     const handleSearch = async (searchTerm) => {
         const query = searchTerm.trim();
         
-        // If search is cleared, restore the original video cards
         if (!query) {
             setIsSearching(false);
             setSearchResults([]);
@@ -34,18 +31,13 @@ export default function GTAMenu() {
 
         setIsSearching(true);
         try {
-            // Fetch from all 3 APIs simultaneously!
-            const [bizRes, contactRes, heistRes] = await Promise.all([
-                fetch(`${API_URL}/gta/businesses/search?q=${query}`, FETCH_OPTIONS),
-                fetch(`${API_URL}/gta/contact/search?q=${query}`, FETCH_OPTIONS),
-                fetch(`${API_URL}/gta/heists/search?q=${query}`, FETCH_OPTIONS)
+            // Fetch from all 3 Supabase tables simultaneously
+            const [bizData, contactData, heistData] = await Promise.all([
+                fetchTieredData('gta_businesses', query),
+                fetchTieredData('gta_contact', query),
+                fetchTieredData('gta_heists', query)
             ]);
 
-            const bizData = await bizRes.json();
-            const contactData = await contactRes.json();
-            const heistData = await heistRes.json();
-
-            // Flatten all the tiered dictionary data into one array
             let combined = [];
             if (bizData) Object.values(bizData).forEach(tier => combined.push(...tier));
             if (contactData) Object.values(contactData).forEach(tier => combined.push(...tier));
@@ -65,7 +57,6 @@ export default function GTAMenu() {
             </h2>
             
             {!isSearching ? (
-                // DEFAULT STATE: Show the 3 Interactive Video Cards
                 <div className="flex flex-col md:flex-row justify-between gap-[30px] w-full mt-[30px]">
                     <VideoCard 
                         imageSrc="https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/cayo.jpg?raw=true"
@@ -87,7 +78,6 @@ export default function GTAMenu() {
                     />
                 </div>
             ) : (
-                // SEARCH STATE: Show the Grid of Action Cards
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,350px))] justify-center gap-5 w-full">
                     {searchResults.length > 0 ? (
                         searchResults.map(item => (
@@ -99,9 +89,7 @@ export default function GTAMenu() {
                 </div>
             )}
 
-            {/* Split Screen Pop-up for Search Results */}
             <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
-
         </GTALayout>
     );
 }

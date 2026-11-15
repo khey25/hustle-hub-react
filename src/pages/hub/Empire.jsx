@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DetailModal from '../../components/DetailModal';
-
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
+import { fetchTieredData, fetchFlatData } from '../../supabaseClient';
 
 export default function Empire() {
     const navigate = useNavigate();
     
-    // State Management
-    const [step, setStep] = useState('welcome'); // 'welcome' | 'select-game' | 'select-goal' | 'bank-input' | 'loading' | 'results'
+    const [step, setStep] = useState('welcome');
     const [selectedGame, setSelectedGame] = useState("");
     const [goalsData, setGoalsData] = useState({});
     const [targetGoal, setTargetGoal] = useState(null);
@@ -25,13 +22,13 @@ export default function Empire() {
         if (step === 'bank-input') setStep('select-goal');
     };
 
-    // --- STEP 2: FETCH GOALS ---
     const fetchAndCategorizeGoals = async (gameId) => {
         setSelectedGame(gameId);
         setStep('loading');
         try {
-            const response = await fetch(`${API_URL}/${gameId}/goals`, FETCH_OPTIONS);
-            const goals = await response.json();
+            // Determine table name based on game
+            const tableName = gameId === "gta" ? "gta_goals" : "stardew_goals";
+            const goals = await fetchFlatData(tableName);
             
             let categorized = {};
             if (gameId === "gta") {
@@ -53,11 +50,10 @@ export default function Empire() {
             setStep('select-goal');
         } catch (error) {
             console.error("Failed to load goals:", error);
-            setStep('select-game'); // fallback on fail
+            setStep('select-game');
         }
     };
 
-    // --- STEP 4: CALCULATE THE GRIND PLAN ---
     const calculateEmpirePlan = async () => {
         const bankValue = parseFloat(currentBank) || 0;
         const shortfall = targetGoal.cost - bankValue;
@@ -74,15 +70,22 @@ export default function Empire() {
         setShortfallMsg(`Shortfall for ${targetGoal.name}: $${shortfall.toLocaleString()}`);
 
         try {
-            let fetchUrls = [];
+            let fetchPromises = [];
             if (selectedGame === "gta") {
-                fetchUrls = [`${API_URL}/gta/businesses`, `${API_URL}/gta/heists`, `${API_URL}/gta/contact`];
+                fetchPromises = [
+                    fetchTieredData('gta_businesses'),
+                    fetchTieredData('gta_heists'),
+                    fetchTieredData('gta_contact')
+                ];
             } else if (selectedGame === "stardew") {
-                fetchUrls = [`${API_URL}/stardew/crops`, `${API_URL}/stardew/artisan_goods`, `${API_URL}/stardew/animal_products`];
+                fetchPromises = [
+                    fetchTieredData('stardew_crops'),
+                    fetchTieredData('stardew_artisan_goods'),
+                    fetchTieredData('stardew_animal_products')
+                ];
             }
 
-            const responses = await Promise.all(fetchUrls.map(url => fetch(url, FETCH_OPTIONS)));
-            const dataSets = await Promise.all(responses.map(res => res.json()));
+            const dataSets = await Promise.all(fetchPromises);
 
             let allItems = [];
             dataSets.forEach(category => {
@@ -117,7 +120,7 @@ export default function Empire() {
             });
 
             viablePlans.sort((a, b) => a.sortMetric - b.sortMetric);
-            setResults(viablePlans.slice(0, 9)); // Top 9 methods
+            setResults(viablePlans.slice(0, 9)); 
             setStep('results');
         } catch (error) {
             console.error("Empire Builder fetch error:", error);
@@ -127,7 +130,6 @@ export default function Empire() {
         }
     };
 
-    // Carousel Image Data
     const carouselImages = [
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/cayo.jpg?raw=true",
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/stardew/stardewimages/goldclock.jpg?raw=true",
@@ -141,7 +143,6 @@ export default function Empire() {
     return (
         <div className="min-h-screen text-white flex flex-col items-center p-5 relative overflow-x-hidden font-sans">
             
-            {/* Green Pulsating Background */}
             <div className="fixed top-0 left-0 w-[100vw] h-[100vh] -z-10 bg-[#0b0310] flex justify-center items-center overflow-hidden">
                 <div className="w-[50vw] h-[50vw] max-w-[800px] max-h-[800px] rounded-full animate-pulse-glow" style={{ background: 'radial-gradient(circle, rgba(76, 175, 80, 0.25) 0%, rgba(76, 175, 80, 0) 70%)' }}></div>
             </div>
@@ -151,18 +152,16 @@ export default function Empire() {
                     THE HUSTLE EMPIRE
                 </h1>
                 <button 
-                    onClick={() => navigate('/')} 
+                    onClick={() => navigate('/hub')} 
                     className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white rounded-lg shadow-[0_4px_6px_rgb(0,0,0)] hover:bg-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)] transition-all duration-200 mx-auto block mb-10"
                 >
                     Return to Hub
                 </button>
             </header>
 
-            {/* MAIN INTERACTIVE CONTAINER */}
             {(step !== 'loading' && step !== 'results') && (
                 <main className="bg-[#1a1a1a]/80 backdrop-blur-md border-2 border-[#be70f1] rounded-xl p-[50px] w-[90%] max-w-[800px] text-center shadow-[0_0_20px_rgba(190,112,241,0.3)] transition-opacity duration-500">
                     
-                    {/* Dynamic Titles */}
                     <h2 className="text-[2.2rem] mb-[30px] text-[#eeeeee] font-bold">
                         {step === 'welcome' && "FROM THE BOTTOM TO THE TOP"}
                         {step === 'select-game' && "What game will it be playa?"}
@@ -170,7 +169,6 @@ export default function Empire() {
                         {step === 'bank-input' && targetGoal && `Bank Check: ${targetGoal.name} ($${targetGoal.cost.toLocaleString()})`}
                     </h2>
 
-                    {/* Step 0: Welcome Screen */}
                     {step === 'welcome' && (
                         <div className="flex flex-col gap-4 mt-[30px]">
                             <button 
@@ -182,7 +180,6 @@ export default function Empire() {
                         </div>
                     )}
 
-                    {/* Step 1: Select Game */}
                     {step === 'select-game' && (
                         <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5 mt-[30px]">
                             <button onClick={() => fetchAndCategorizeGoals("gta")} className="relative h-[180px] bg-[#222] border-2 border-[#be70f1] rounded-xl flex items-center justify-center overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)] group p-0">
@@ -196,7 +193,6 @@ export default function Empire() {
                         </div>
                     )}
 
-                    {/* Step 2: Select Goal from Database */}
                     {step === 'select-goal' && (
                         <div className="flex flex-col mt-[30px]">
                             {Object.entries(goalsData).map(([category, items]) => (
@@ -224,7 +220,6 @@ export default function Empire() {
                         </div>
                     )}
 
-                    {/* Step 3: Enter Bank Balance */}
                     {step === 'bank-input' && (
                         <div className="flex flex-col gap-4 mt-[30px]">
                             <input 
@@ -243,7 +238,6 @@ export default function Empire() {
                         </div>
                     )}
 
-                    {/* Shared "Go Back" logic for intermediate steps */}
                     {step !== 'welcome' && (
                         <button 
                             onClick={handleBack}
@@ -253,7 +247,6 @@ export default function Empire() {
                         </button>
                     )}
 
-                    {/* Infinite Carousel (Only on Welcome Screen) */}
                     {step === 'welcome' && (
                         <div className="w-full overflow-hidden mt-[50px] relative [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
                             <div className="flex gap-5 w-max animate-scroll-carousel">
@@ -269,14 +262,12 @@ export default function Empire() {
                 </main>
             )}
 
-            {/* LOADING STATE */}
             {step === 'loading' && (
                 <main className="w-full max-w-[1200px] text-center animate-fade-in-up">
                     <h2 className="text-[2.2rem] text-[#eeeeee] font-bold">Accessing secure database...</h2>
                 </main>
             )}
 
-            {/* RESULTS CONTAINER */}
             {step === 'results' && (
                 <main className="w-full max-w-[1200px] text-center animate-fade-in-up">
                     <h2 className="text-[2.2rem] mb-[10px] text-[#eeeeee] font-bold">Your Custom Grind Plan</h2>
@@ -315,7 +306,6 @@ export default function Empire() {
                 </main>
             )}
 
-            {/* Split Screen Details Pop-up (Recycled) */}
             <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
 
         </div>

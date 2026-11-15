@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import StardewLayout from './StardewLayout';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
+import { fetchTieredData } from '../../supabaseClient';
 
-const API_URL = "https://the-hustle-hub.vercel.app/api/v1";
-const FETCH_OPTIONS = { headers: { "x-api-key": "hustle-hub-secret-key" } };
 const stardewHover = "hover:border-[#f1b50d] hover:shadow-[0_0_20px_rgba(255,234,47,0.7),inset_0_0_10px_rgba(255,235,59,0.3)] hover:text-[#f1b50d]";
 const bgVideo = "https://github.com/khey25/legaspi_prelimfastapi/raw/refs/heads/main/stardew/stardewvideo/stardewfarm.mp4";
 
@@ -13,19 +12,14 @@ export default function Artisan() {
     const [selectedItem, setSelectedItem] = useState(null);
 
     useEffect(() => {
-        fetch(`${API_URL}/stardew/artisan_goods`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
+        fetchTieredData('stardew_artisan_goods')
+            .then(groupedData => setData(groupedData))
             .catch(err => console.error("API Error:", err));
     }, []);
 
     const handleSearch = (searchTerm) => {
-        const query = searchTerm.trim();
-        const endpoint = query ? `/stardew/artisan_goods/search?q=${query}` : `/stardew/artisan_goods`;
-        
-        fetch(`${API_URL}${endpoint}`, FETCH_OPTIONS)
-            .then(res => res.json())
-            .then(json => setData(json))
+        fetchTieredData('stardew_artisan_goods', searchTerm)
+            .then(groupedData => setData(groupedData))
             .catch(err => console.error("Search Error:", err));
     };
 
