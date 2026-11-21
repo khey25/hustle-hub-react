@@ -64,15 +64,7 @@ export default function Home({ session, userRole }) {
               Log In
             </button>
           )}
-
-          {/* Secret Admin Button - Only renders if the role from profiles table is 'admin' */}
-          {userRole === 'admin' && (
-            <div 
-              className="py-3 px-6 text-[1.2rem] font-bold bg-[#4CAF50] text-white border-none rounded-lg shadow-[0_0_15px_rgba(76,175,80,0.5)] cursor-default"
-            >
-              Admin Mode Active
-            </div>
-          )}
+          
         </div>
       </header>
 
