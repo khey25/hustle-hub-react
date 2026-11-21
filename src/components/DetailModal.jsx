@@ -1,41 +1,34 @@
 import { useState, useEffect } from 'react';
-import { supabase, deleteRecord, updateRecord } from '../supabaseClient';
+import {
+  supabase,
+  deleteRecord,
+  updateRecord,
+  checkUserItemStatus,
+  toggleOwnedAsset,
+} from '../supabaseClient';
 import { useLocation } from 'react-router-dom';
+import { MdCheckCircle, MdAddCircleOutline } from 'react-icons/md';
 
-export default function DetailModal({ isOpen, onClose, data }) {
+export default function DetailModal({
+  isOpen,
+  onClose,
+  data,
+  session,
+  userRole,
+  tableName,
+  onOwnedChange = null,
+}) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+  const [isOwned, setIsOwned] = useState(false);
+  const [isCheckingOwned, setIsCheckingOwned] = useState(false);
+  const [isTogglingOwned, setIsTogglingOwned] = useState(false);
   const location = useLocation();
 
-  // 1. Check if the current user is an Admin
-  useEffect(() => {
-    if (!isOpen) {
-      setIsEditing(false); // Reset edit mode when closed
-      return;
-    }
-    
-    setEditFormData(data); // Pre-fill edit form with current data
-
-    const checkRole = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
-        if (profile?.role === 'admin') setIsAdmin(true);
-      }
-    };
-    checkRole();
-  }, [isOpen, data]);
-
-  // If the modal is closed or there is no data to show, render nothing
-  if (!isOpen || !data) return null;
-
-  // 2. Helper to figure out which table we are currently looking at based on the URL
+  // Helper to determine the active database table
   const getCurrentTable = () => {
+    if (tableName) return tableName;
     const path = location.pathname;
     if (path.includes('/gta/business')) return 'gta_businesses';
     if (path.includes('/gta/heists')) return 'gta_heists';
@@ -46,14 +39,92 @@ export default function DetailModal({ isOpen, onClose, data }) {
     return null;
   };
 
-  // 3. Delete Logic (With Confirmation)
+  const currentTable = getCurrentTable();
+  const userId = session?.user?.id;
+
+  // 1. Check Admin role & pre-fill edit form
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEditing(false);
+      return;
+    }
+
+    setEditFormData(data);
+
+    if (userRole) {
+      setIsAdmin(userRole === 'admin');
+      return;
+    }
+
+    const checkRole = async () => {
+      const { data: { session: activeSession } } = await supabase.auth.getSession();
+      if (activeSession?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', activeSession.user.id)
+          .single();
+        setIsAdmin(profile?.role === 'admin');
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkRole();
+  }, [isOpen, data, userRole]);
+
+  // 2. Check if the logged-in user already owns this item
+  useEffect(() => {
+    if (!isOpen || !data || !userId || !currentTable) {
+      setIsOwned(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsCheckingOwned(true);
+
+    checkUserItemStatus(userId, currentTable, data.name)
+      .then((status) => {
+        if (isMounted) setIsOwned(status.isOwned);
+      })
+      .catch((err) => console.error('Error checking owned status:', err))
+      .finally(() => {
+        if (isMounted) setIsCheckingOwned(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, data, userId, currentTable]);
+
+  // If the modal is closed or there is no data to show, render nothing
+  if (!isOpen || !data) return null;
+
+  // 3. Toggle Owned Asset Logic
+  const handleToggleOwned = async () => {
+    if (!userId || !currentTable || isTogglingOwned) return;
+
+    setIsTogglingOwned(true);
+    try {
+      const purchasePrice = typeof data.setup_cost === 'number' ? data.setup_cost : null;
+      const nowOwned = await toggleOwnedAsset(userId, currentTable, data.name, purchasePrice);
+      setIsOwned(nowOwned);
+      if (onOwnedChange) {
+        onOwnedChange(currentTable, data.name, nowOwned);
+      }
+    } catch (error) {
+      alert(`Failed to update owned status: ${error.message}`);
+    } finally {
+      setIsTogglingOwned(false);
+    }
+  };
+
+  // 4. Delete Logic (With Confirmation)
   const handleDelete = async () => {
-    const table = getCurrentTable();
-    if (!table) return alert("Cannot determine table for deletion from this page.");
+    if (!currentTable) return alert("Cannot determine table for deletion from this page.");
 
     if (window.confirm(`Are you absolutely sure you want to delete ${data.name}?`)) {
       try {
-        await deleteRecord(table, 'name', data.name);
+        await deleteRecord(currentTable, 'name', data.name);
         alert(`${data.name} deleted successfully! Refresh the page to see changes.`);
         onClose();
       } catch (error) {
@@ -62,9 +133,8 @@ export default function DetailModal({ isOpen, onClose, data }) {
     }
   };
 
-  // 4. Edit Logic
+  // 5. Edit Logic
   const handleEditChange = (key, value) => {
-    // Attempt to cast to number if it looks like one, otherwise keep as string
     const isNum = !isNaN(value) && value.trim() !== '';
     setEditFormData(prev => ({
       ...prev,
@@ -73,15 +143,13 @@ export default function DetailModal({ isOpen, onClose, data }) {
   };
 
   const handleSave = async () => {
-    const table = getCurrentTable();
-    if (!table) return alert("Cannot determine table for updating from this page.");
+    if (!currentTable) return alert("Cannot determine table for updating from this page.");
 
     try {
-      // Remove 'name' from updates since it's the primary key we are using to identify the row
       const updates = { ...editFormData };
-      delete updates.name; 
+      delete updates.name;
 
-      await updateRecord(table, 'name', data.name, updates);
+      await updateRecord(currentTable, 'name', data.name, updates);
       alert(`${data.name} updated successfully! Refresh the page to see changes.`);
       setIsEditing(false);
       onClose();
@@ -115,9 +183,37 @@ export default function DetailModal({ isOpen, onClose, data }) {
           </div>
           
           <div className="flex-1 bg-black text-[#ddd] p-[25px] md:p-10 text-left overflow-y-auto flex flex-col">
-            <h3 className="text-white text-[2rem] mt-0 mb-[15px] font-bold">
+            <h3 className="text-white text-[2rem] mt-0 mb-3 font-bold">
               {data.name}
             </h3>
+
+            {/* OWNED ASSET TOGGLE (Logged-in Users & Admins only) */}
+            {userId && currentTable && !isEditing && (
+              <div className="mb-5">
+                <button
+                  type="button"
+                  onClick={handleToggleOwned}
+                  disabled={isCheckingOwned || isTogglingOwned}
+                  className={`w-full py-2.5 px-4 rounded-lg font-bold text-[1rem] flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 ${
+                    isOwned
+                      ? 'bg-[#4CAF50]/20 border-2 border-[#4CAF50] text-[#4CAF50] shadow-[0_0_12px_rgba(76,175,80,0.35)] hover:bg-[#4CAF50]/30'
+                      : 'bg-transparent border-2 border-[#555] text-gray-300 hover:border-[#4CAF50] hover:text-[#4CAF50]'
+                  }`}
+                >
+                  {isOwned ? (
+                    <>
+                      <MdCheckCircle size={22} />
+                      <span>{isTogglingOwned ? 'Updating...' : 'Owned in My Empire'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <MdAddCircleOutline size={22} />
+                      <span>{isCheckingOwned ? 'Checking...' : isTogglingOwned ? 'Saving...' : 'Mark as Owned'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
             
             <div className="space-y-4 flex-grow">
               {Object.entries(data).map(([key, value]) => {

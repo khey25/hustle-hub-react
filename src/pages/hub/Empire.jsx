@@ -1,20 +1,27 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MdCheckCircle } from 'react-icons/md';
 import DetailModal from '../../components/DetailModal';
-import { fetchTieredData, fetchFlatData } from '../../supabaseClient';
+import {
+    fetchTieredData,
+    fetchFlatData,
+    fetchUserOwnedAssets,
+    TABLE_TO_COLUMN,
+} from '../../supabaseClient';
 
-export default function Empire() {
+export default function Empire({ session, userRole }) {
     const navigate = useNavigate();
-    
+
     const [step, setStep] = useState('welcome');
     const [selectedGame, setSelectedGame] = useState("");
     const [goalsData, setGoalsData] = useState({});
     const [targetGoal, setTargetGoal] = useState(null);
     const [currentBank, setCurrentBank] = useState("");
-    
+
     const [results, setResults] = useState([]);
+    const [ownedMatchCount, setOwnedMatchCount] = useState(0);
     const [shortfallMsg, setShortfallMsg] = useState("");
-    const [selectedItem, setSelectedItem] = useState(null);
+    const [selectedPlan, setSelectedPlan] = useState(null);
 
     const handleBack = () => {
         if (step === 'select-game') setStep('welcome');
@@ -26,10 +33,9 @@ export default function Empire() {
         setSelectedGame(gameId);
         setStep('loading');
         try {
-            // Determine table name based on game
             const tableName = gameId === "gta" ? "gta_goals" : "stardew_goals";
             const goals = await fetchFlatData(tableName);
-            
+
             let categorized = {};
             if (gameId === "gta") {
                 categorized = { "Businesses": [], "Heists": [], "Contact": [] };
@@ -40,11 +46,11 @@ export default function Empire() {
                     } else if (keys.includes('heist') || keys.includes('arcade') || keys.includes('kosatka') || keys.includes('facility') || keys.includes('salvage') || keys.includes('auto shop') || keys.includes('apartment')) {
                         categorized["Heists"].push(goal);
                     } else {
-                        categorized["Businesses"].push(goal); 
+                        categorized["Businesses"].push(goal);
                     }
                 });
             } else {
-                categorized = { "Properties & Upgrades": goals }; 
+                categorized = { "Properties & Upgrades": goals };
             }
             setGoalsData(categorized);
             setStep('select-goal');
@@ -54,15 +60,18 @@ export default function Empire() {
         }
     };
 
-    const calculateEmpirePlan = async () => {
+    const calculateEmpirePlan = async ({ silent = false } = {}) => {
+        if (!targetGoal) return;
+
         const bankValue = parseFloat(currentBank) || 0;
         const shortfall = targetGoal.cost - bankValue;
 
-        setStep('loading');
+        if (!silent) setStep('loading');
 
         if (shortfall <= 0 && targetGoal.cost > 0) {
             setShortfallMsg(`You already have enough money for the ${targetGoal.name}! Go buy it!`);
             setResults([]);
+            setOwnedMatchCount(0);
             setStep('results');
             return;
         }
@@ -70,31 +79,56 @@ export default function Empire() {
         setShortfallMsg(`Shortfall for ${targetGoal.name}: $${shortfall.toLocaleString()}`);
 
         try {
-            let fetchPromises = [];
-            if (selectedGame === "gta") {
-                fetchPromises = [
-                    fetchTieredData('gta_businesses'),
-                    fetchTieredData('gta_heists'),
-                    fetchTieredData('gta_contact')
-                ];
-            } else if (selectedGame === "stardew") {
-                fetchPromises = [
-                    fetchTieredData('stardew_crops'),
-                    fetchTieredData('stardew_artisan_goods'),
-                    fetchTieredData('stardew_animal_products')
-                ];
-            }
+            const tableNames =
+                selectedGame === "gta"
+                    ? ['gta_businesses', 'gta_heists', 'gta_contact']
+                    : ['stardew_crops', 'stardew_artisan_goods', 'stardew_animal_products'];
 
-            const dataSets = await Promise.all(fetchPromises);
+            const userId = session?.user?.id;
 
-            let allItems = [];
-            dataSets.forEach(category => {
-                if(category) Object.values(category).forEach(tierArray => allItems.push(...tierArray));
+            // Fetch all game methods AND the user's owned assets in parallel
+            const [tableDataSets, ownedRows] = await Promise.all([
+                Promise.all(
+                    tableNames.map(async (tableName) => ({
+                        tableName,
+                        grouped: await fetchTieredData(tableName),
+                    }))
+                ),
+                userId ? fetchUserOwnedAssets(userId) : Promise.resolve([]),
+            ]);
+
+            // Build a fast lookup set of "tableName:itemName" for owned methods
+            const ownedKeys = new Set();
+            ownedRows.forEach((row) => {
+                tableNames.forEach((tableName) => {
+                    const col = TABLE_TO_COLUMN[tableName];
+                    if (col && row[col]) {
+                        ownedKeys.add(`${tableName}:${row[col]}`);
+                    }
+                });
             });
 
-            let viablePlans = [];
-            allItems.forEach(item => {
-                const profitPerRun = item.max_payout - item.setup_cost;
+            // Flatten items while preserving each item's origin tableName
+            const allEntries = [];
+            tableDataSets.forEach(({ tableName, grouped }) => {
+                if (grouped) {
+                    Object.values(grouped).forEach((tierArray) => {
+                        tierArray.forEach((item) => {
+                            allEntries.push({ tableName, item });
+                        });
+                    });
+                }
+            });
+
+            const viablePlans = [];
+            allEntries.forEach(({ tableName, item }) => {
+                const isOwned = ownedKeys.has(`${tableName}:${item.name}`);
+                const payout = Number(item.max_payout ?? item.base_payout ?? 0);
+                const setupCost = Number(item.setup_cost ?? 0);
+
+                // If the user already owns this method, waive the upfront setup cost
+                const profitPerRun = isOwned ? payout : payout - setupCost;
+
                 if (profitPerRun > 0) {
                     const runsNeeded = Math.ceil(shortfall / profitPerRun);
                     let downtimeString = "";
@@ -103,28 +137,38 @@ export default function Empire() {
                     if (selectedGame === "gta") {
                         const totalMinutes = runsNeeded * (item.cooldown_minutes || 0);
                         downtimeString = `Total Cooldown: ${totalMinutes} min`;
-                        sortMetric = runsNeeded; 
+                        sortMetric = runsNeeded;
                     } else if (selectedGame === "stardew") {
                         const totalDays = runsNeeded * (item.processing_days || 1);
                         downtimeString = `Total Time: ${totalDays} in-game days`;
-                        sortMetric = totalDays; 
+                        sortMetric = totalDays;
                     }
 
                     viablePlans.push({
-                        ...item,
+                        item,
+                        tableName,
+                        isOwned,
                         runs: runsNeeded,
                         downtimeLabel: downtimeString,
-                        sortMetric: sortMetric
+                        sortMetric,
                     });
                 }
             });
 
-            viablePlans.sort((a, b) => a.sortMetric - b.sortMetric);
-            setResults(viablePlans.slice(0, 9)); 
+            // Prioritize owned methods first, then sort by fewest runs / shortest time
+            viablePlans.sort((a, b) => {
+                if (a.isOwned !== b.isOwned) return a.isOwned ? -1 : 1;
+                return a.sortMetric - b.sortMetric;
+            });
+
+            const topResults = viablePlans.slice(0, 9);
+            setResults(topResults);
+            setOwnedMatchCount(topResults.filter((plan) => plan.isOwned).length);
             setStep('results');
         } catch (error) {
             console.error("Empire Builder fetch error:", error);
             setResults([]);
+            setOwnedMatchCount(0);
             setShortfallMsg("Failed to connect to the central database.");
             setStep('results');
         }
@@ -142,7 +186,7 @@ export default function Empire() {
 
     return (
         <div className="min-h-screen text-white flex flex-col items-center p-5 relative overflow-x-hidden font-sans">
-            
+
             <div className="fixed top-0 left-0 w-[100vw] h-[100vh] -z-10 bg-[#0b0310] flex justify-center items-center overflow-hidden">
                 <div className="w-[50vw] h-[50vw] max-w-[800px] max-h-[800px] rounded-full animate-pulse-glow" style={{ background: 'radial-gradient(circle, rgba(76, 175, 80, 0.25) 0%, rgba(76, 175, 80, 0) 70%)' }}></div>
             </div>
@@ -151,9 +195,9 @@ export default function Empire() {
                 <h1 className="text-[3.5rem] text-[#be70f1] font-bold tracking-widest drop-shadow-[2px_2px_4px_rgba(0,0,0,0.7)] mb-5">
                     THE HUSTLE EMPIRE
                 </h1>
-                <button 
-                    onClick={() => navigate('/hub')} 
-                    className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white rounded-lg shadow-[0_4px_6px_rgb(0,0,0)] hover:bg-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)] transition-all duration-200 mx-auto block mb-10"
+                <button
+                    onClick={() => navigate('/hub')}
+                    className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white rounded-lg shadow-[0_4px_6px_rgb(0,0,0)] hover:bg-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)] transition-all duration-200 mx-auto block mb-10 border-none cursor-pointer"
                 >
                     Return to Hub
                 </button>
@@ -161,7 +205,7 @@ export default function Empire() {
 
             {(step !== 'loading' && step !== 'results') && (
                 <main className="bg-[#1a1a1a]/80 backdrop-blur-md border-2 border-[#be70f1] rounded-xl p-[50px] w-[90%] max-w-[800px] text-center shadow-[0_0_20px_rgba(190,112,241,0.3)] transition-opacity duration-500">
-                    
+
                     <h2 className="text-[2.2rem] mb-[30px] text-[#eeeeee] font-bold">
                         {step === 'welcome' && "FROM THE BOTTOM TO THE TOP"}
                         {step === 'select-game' && "What game will it be playa?"}
@@ -171,7 +215,7 @@ export default function Empire() {
 
                     {step === 'welcome' && (
                         <div className="flex flex-col gap-4 mt-[30px]">
-                            <button 
+                            <button
                                 onClick={() => setStep('select-game')}
                                 className="py-[15px] px-[20px] text-[1.3rem] font-bold bg-[#222] text-[#be70f1] border-2 border-transparent rounded-lg cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] hover:text-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)]"
                             >
@@ -201,8 +245,8 @@ export default function Empire() {
                                         <h3 className="text-[1.5rem] text-[#be70f1] text-left border-b-2 border-[#be70f1] pb-[5px] mt-[25px] mb-[15px] font-bold">{category}</h3>
                                         <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5">
                                             {items.map(item => (
-                                                <button 
-                                                    key={item.name} 
+                                                <button
+                                                    key={item.name}
                                                     onClick={() => { setTargetGoal(item); setStep('bank-input'); setCurrentBank(""); }}
                                                     className="relative h-[180px] bg-[#222] border-2 border-[#be70f1] rounded-xl flex items-center justify-center overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)] group p-0"
                                                 >
@@ -222,15 +266,15 @@ export default function Empire() {
 
                     {step === 'bank-input' && (
                         <div className="flex flex-col gap-4 mt-[30px]">
-                            <input 
-                                type="number" 
+                            <input
+                                type="number"
                                 value={currentBank}
                                 onChange={(e) => setCurrentBank(e.target.value)}
-                                className="p-[15px] text-[1.2rem] bg-[#111] text-white border-2 border-[#555] rounded-lg w-full box-border transition-colors duration-300 focus:outline-none focus:border-[#4CAF50] hover:border-[#4CAF50]" 
-                                placeholder="Current Bank Balance (e.g. 500000)" 
+                                className="p-[15px] text-[1.2rem] bg-[#111] text-white border-2 border-[#555] rounded-lg w-full box-border transition-colors duration-300 focus:outline-none focus:border-[#4CAF50] hover:border-[#4CAF50]"
+                                placeholder="Current Bank Balance (e.g. 500000)"
                             />
-                            <button 
-                                onClick={calculateEmpirePlan}
+                            <button
+                                onClick={() => calculateEmpirePlan()}
                                 className="mt-[15px] py-[15px] px-[20px] text-[1.3rem] font-bold bg-[#222] text-[#be70f1] border-2 border-transparent rounded-lg cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] hover:text-[#4CAF50] hover:shadow-[0_0_15px_rgba(76,175,80,0.5)]"
                             >
                                 Calculate Grind Plan
@@ -239,7 +283,7 @@ export default function Empire() {
                     )}
 
                     {step !== 'welcome' && (
-                        <button 
+                        <button
                             onClick={handleBack}
                             className="mt-[30px] py-[10px] px-[20px] text-[1rem] bg-transparent border-2 border-[#555] text-[#aaa] font-bold rounded-lg cursor-pointer transition-colors hover:text-white hover:border-[#777]"
                         >
@@ -251,9 +295,9 @@ export default function Empire() {
                         <div className="w-full overflow-hidden mt-[50px] relative [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
                             <div className="flex gap-5 w-max animate-scroll-carousel">
                                 {[...carouselImages, ...carouselImages].map((src, i) => (
-                                    <img 
-                                        key={i} src={src} alt="Empire preview" 
-                                        className="w-[140px] h-[140px] object-cover rounded-xl border-2 border-[#be70f1] opacity-60 transition-all duration-300 hover:opacity-100 hover:scale-105 hover:border-[#4CAF50]" 
+                                    <img
+                                        key={i} src={src} alt="Empire preview"
+                                        className="w-[140px] h-[140px] object-cover rounded-xl border-2 border-[#be70f1] opacity-60 transition-all duration-300 hover:opacity-100 hover:scale-105 hover:border-[#4CAF50]"
                                     />
                                 ))}
                             </div>
@@ -271,23 +315,44 @@ export default function Empire() {
             {step === 'results' && (
                 <main className="w-full max-w-[1200px] text-center animate-fade-in-up">
                     <h2 className="text-[2.2rem] mb-[10px] text-[#eeeeee] font-bold">Your Custom Grind Plan</h2>
-                    <h3 className="text-[#4CAF50] text-[1.5rem] mb-[30px] font-bold">{shortfallMsg}</h3>
-                    
-                    <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-[25px] mt-[30px]">
+                    <h3 className="text-[#4CAF50] text-[1.5rem] mb-4 font-bold">{shortfallMsg}</h3>
+
+                    {ownedMatchCount > 0 && (
+                        <div className="inline-flex items-center gap-2 px-4 py-2 mb-6 rounded-full bg-[#4CAF50]/15 border border-[#4CAF50] text-[#4CAF50] text-sm font-bold">
+                            <MdCheckCircle size={18} />
+                            <span>
+                                Prioritizing {ownedMatchCount} owned {ownedMatchCount === 1 ? 'method' : 'methods'} from your Empire (setup costs waived)
+                            </span>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-[25px] mt-[20px]">
                         {results.length > 0 ? (
-                            results.map((item, index) => (
-                                <div 
-                                    key={item.name}
-                                    onClick={() => setSelectedItem(item)}
-                                    className="relative h-[200px] bg-[#1e1e1e] border-2 border-[#be70f1] rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] shadow-[0_4px_6px_rgb(0,0,0)] hover:shadow-[0_0_20px_rgba(76,175,80,0.6),inset_0_0_10px_rgba(76,175,80,0.3)] opacity-0 animate-fade-in-up"
+                            results.map((plan, index) => (
+                                <div
+                                    key={`${plan.tableName}-${plan.item.name}`}
+                                    onClick={() => setSelectedPlan(plan)}
+                                    className={`relative h-[200px] bg-[#1e1e1e] border-2 ${
+                                        plan.isOwned
+                                            ? 'border-[#4CAF50] shadow-[0_0_15px_rgba(76,175,80,0.35)]'
+                                            : 'border-[#be70f1] shadow-[0_4px_6px_rgb(0,0,0)]'
+                                    } rounded-lg flex items-center justify-center cursor-pointer overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:border-[#4CAF50] hover:shadow-[0_0_20px_rgba(76,175,80,0.6),inset_0_0_10px_rgba(76,175,80,0.3)] opacity-0 animate-fade-in-up`}
                                     style={{ animationDelay: `${index * 0.1}s` }}
                                 >
-                                    <img src={item.image_url} alt={item.name} className="absolute top-0 left-0 w-full h-full object-cover opacity-30 z-0 pointer-events-none" />
+                                    <img src={plan.item.image_url} alt={plan.item.name} className="absolute top-0 left-0 w-full h-full object-cover opacity-30 z-0 pointer-events-none" />
+
+                                    {plan.isOwned && (
+                                        <span className="absolute top-2.5 left-2.5 z-20 px-2.5 py-0.5 rounded-full bg-black/80 border border-[#4CAF50] text-[#4CAF50] text-[0.75rem] font-bold uppercase tracking-wider flex items-center gap-1 pointer-events-none shadow-[0_0_8px_rgba(76,175,80,0.5)]">
+                                            <MdCheckCircle size={14} />
+                                            Owned • Priority
+                                        </span>
+                                    )}
+
                                     <div className="relative z-10 w-full p-[10px] text-center pointer-events-none">
-                                        <p className="m-0 mb-[10px] text-[1.6rem] font-bold text-white drop-shadow-[2px_2px_4px_#000]">{item.name}</p>
+                                        <p className="m-0 mb-[10px] text-[1.6rem] font-bold text-white drop-shadow-[2px_2px_4px_#000]">{plan.item.name}</p>
                                         <div className="bg-black/70 rounded-lg p-[10px] inline-block">
-                                            <p className="m-0 text-[#be70f1] font-bold">Runs Needed: {item.runs.toLocaleString()}</p>
-                                            <p className="mt-[5px] mb-0 text-[#4CAF50] text-[1rem]">{item.downtimeLabel}</p>
+                                            <p className="m-0 text-[#be70f1] font-bold">Runs Needed: {plan.runs.toLocaleString()}</p>
+                                            <p className="mt-[5px] mb-0 text-[#4CAF50] text-[1rem]">{plan.downtimeLabel}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -297,8 +362,8 @@ export default function Empire() {
                         )}
                     </div>
 
-                    <button 
-                        onClick={() => { setStep('welcome'); setCurrentBank(""); }}
+                    <button
+                        onClick={() => { setStep('welcome'); setCurrentBank(""); setOwnedMatchCount(0); }}
                         className="mt-[40px] py-[15px] px-[20px] text-[1.3rem] font-bold bg-[#be70f1] text-white rounded-lg cursor-pointer transition-colors hover:bg-[#222] shadow-[0_4px_6px_rgb(0,0,0)] inline-block border-none"
                     >
                         Calculate Another Goal
@@ -306,7 +371,15 @@ export default function Empire() {
                 </main>
             )}
 
-            <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
+            <DetailModal
+                isOpen={!!selectedPlan}
+                data={selectedPlan?.item}
+                tableName={selectedPlan?.tableName}
+                onClose={() => setSelectedPlan(null)}
+                session={session}
+                userRole={userRole}
+                onOwnedChange={() => calculateEmpirePlan({ silent: true })}
+            />
 
         </div>
     );

@@ -3,11 +3,14 @@ import GTALayout from './GTALayout';
 import ActionCard from '../../components/ActionCard';
 import DetailModal from '../../components/DetailModal';
 import { fetchTieredData } from '../../supabaseClient';
+import { useOwnedAssets } from '../../hooks/useOwnedAssets';
+import { useBookmarks } from '../../hooks/useBookmarks';
 
-export default function Heists() {
+export default function Heists({ session, userRole }) {
     const [data, setData] = useState(null);
     const [selectedItem, setSelectedItem] = useState(null);
-
+    const { isBookmarked, handleToggleBookmark } = useBookmarks(session, 'gta_heists');
+    const { isOwned, setOwnedStatus } = useOwnedAssets(session, 'gta_heists');
     const backgrounds = [
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/cayo.jpg?raw=true",
         "https://github.com/khey25/legaspi_prelimfastapi/blob/main/gta/gtaimages/casino.jpg?raw=true",
@@ -36,7 +39,14 @@ export default function Heists() {
                 </h2>
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,350px))] justify-center gap-5">
                     {items.map(item => (
-                        <ActionCard key={item.name} item={item} onClick={setSelectedItem} />
+                        <ActionCard
+    key={item.name}
+    item={item}
+    onClick={setSelectedItem}
+    isBookmarked={isBookmarked(item.name)}
+    onToggleBookmark={session ? () => handleToggleBookmark(item.name) : null}
+    isOwned={isOwned(item.name)}
+/>
                     ))}
                 </div>
             </section>
@@ -54,7 +64,14 @@ export default function Heists() {
             ) : (
                 <p className="text-xl text-gray-400 mt-10">Loading heists...</p>
             )}
-            <DetailModal isOpen={!!selectedItem} data={selectedItem} onClose={() => setSelectedItem(null)} />
+            <DetailModal
+    isOpen={!!selectedItem}
+    data={selectedItem}
+    onClose={() => setSelectedItem(null)}
+    session={session}
+    userRole={userRole}
+    onOwnedChange={(_table, itemName, nowOwned) => setOwnedStatus(itemName, nowOwned)}
+/>
         </GTALayout>
     );
 }

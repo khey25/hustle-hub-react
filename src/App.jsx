@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 
 import Home from './pages/hub/Home';
+import Profile from './pages/hub/Profile';
+import Reviews from './pages/hub/Reviews';
 import Matchmaker from './pages/hub/Matchmaker';
 import Empire from './pages/hub/Empire'; 
 
@@ -80,19 +82,21 @@ function App() {
         
         {/* 2. The Hub is moved to /hub */}
         <Route path="/hub" element={<Home session={session} userRole={userRole} />} />
+        <Route path="/profile" element={<Profile session={session} userRole={userRole} />} />
+        <Route path="/reviews" element={<Reviews session={session} userRole={userRole} />} />
 
-        <Route path="/matchmaker" element={<Matchmaker />} />
-        <Route path="/empire" element={<Empire />} />
+        <Route path="/matchmaker" element={<Matchmaker session={session} userRole={userRole} />} />
+        <Route path="/empire" element={<Empire session={session} userRole={userRole} />} />
         
         <Route path="/gta" element={<GTAMenu />} />
-        <Route path="/gta/business" element={<Business />} />
-        <Route path="/gta/heists" element={<Heists />} />
-        <Route path="/gta/contact" element={<Contact />} />
+        <Route path="/gta/business" element={<Business session={session} userRole={userRole} />} />
+        <Route path="/gta/heists" element={<Heists session={session} userRole={userRole} />} />
+        <Route path="/gta/contact" element={<Contact session={session} userRole={userRole} />} />
 
         <Route path="/stardew" element={<StardewMenu />} />
-        <Route path="/stardew/crops" element={<Crops />} />
-        <Route path="/stardew/artisan" element={<Artisan />} />
-        <Route path="/stardew/animals" element={<Animals />} />
+        <Route path="/stardew/crops" element={<Crops session={session} userRole={userRole} />} />
+        <Route path="/stardew/artisan" element={<Artisan session={session} userRole={userRole} />} />
+        <Route path="/stardew/animals" element={<Animals session={session} userRole={userRole} />} />
       </Routes>
       
       {/* Global Admin Button */}

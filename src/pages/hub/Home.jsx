@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { games, tools } from '../../gameData';
 import '../../index.css';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../supabaseClient'; 
 
 // THE FIX: Properly declaring Home and receiving the Bouncer props
 export default function Home({ session, userRole }) {
@@ -14,10 +13,6 @@ export default function Home({ session, userRole }) {
     searchQuery === "" || game.tags.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setIsModalOpen(false);
-  };
 
   return (
     <div className="min-h-screen bg-[#0b0310] text-white flex flex-col items-center p-5 relative overflow-x-hidden">
@@ -45,14 +40,21 @@ export default function Home({ session, userRole }) {
           >
             Tools
           </button>
+
+          <button 
+            onClick={() => navigate('/reviews')}
+            className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white border-none rounded-lg shadow-md hover:bg-[#8a2be2] transition-colors cursor-pointer"
+          >
+            Reviews
+          </button>
           
-          {/* Dynamic Login/Logout Button based on Session state */}
+          {/* Profile button for Users/Admins; Log In button for Guests */}
           {session ? (
             <button 
-              onClick={handleLogout}
-              className="py-3 px-6 text-[1.2rem] font-bold bg-transparent border-2 border-[#555] text-[#aaa] rounded-lg hover:text-white hover:border-[#be70f1] transition-colors cursor-pointer"
+              onClick={() => navigate('/profile')}
+              className="py-3 px-6 text-[1.2rem] font-bold bg-[#be70f1] text-white border-none rounded-lg shadow-md hover:bg-[#8a2be2] transition-colors cursor-pointer"
             >
-              Log Out
+              Profile
             </button>
           ) : (
             <button 
