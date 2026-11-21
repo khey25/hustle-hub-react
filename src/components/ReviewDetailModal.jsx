@@ -108,7 +108,7 @@ export default function ReviewDetailModal({
         </button>
 
         <div className="flex flex-col md:flex-row h-[82vh] md:h-[600px]">
-          {/* Left Pane: Money-Making Method Image */}
+          {/* Left Pane: Money-Making Method Image & Name */}
           <div className="flex-1 md:flex-[1.15] bg-[#222] border-b-2 md:border-b-0 md:border-r-2 border-[#333] min-h-[200px] relative">
             <img
               src={item.image_url}
@@ -116,30 +116,31 @@ export default function ReviewDetailModal({
               className="absolute top-0 left-0 w-full h-full object-cover"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-5 text-left">
-              <span className="inline-block px-2.5 py-0.5 mb-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[#be70f1]/25 border border-[#be70f1] text-[#be70f1]">
-                {TABLE_LABELS[entry.tableName] || entry.tableName}
-              </span>
               <h3 className="text-white text-[1.6rem] md:text-[1.9rem] font-bold m-0 drop-shadow-[2px_2px_4px_#000]">
                 {item.name}
               </h3>
             </div>
           </div>
 
-          {/* Right Pane: Review Details + Edit/Delete Controls */}
-          <div className="flex-1 bg-black text-[#ddd] p-6 md:p-9 text-left overflow-y-auto flex flex-col">
+          {/* Right Pane: Author, Date, Category, Review Body + Edit/Delete Controls */}
+          <div className="flex-1 min-w-0 bg-black text-[#ddd] p-6 md:p-9 text-left overflow-y-auto flex flex-col">
             <div className="mb-4 pb-4 border-b border-[#2a2a2a]">
               <p className="text-white font-bold text-[1.15rem] m-0 break-all">
                 {review.reviewer_display || 'Anonymous Hustler'}
               </p>
-              <p className="text-sm text-gray-400 mt-1 mb-0">
-                {review.updated_at ? (
-                  <span className="italic text-[#FFEB3B]/90">
-                    Edited - {formatDate(review.updated_at)}
+
+              <p className="text-sm text-gray-400 mt-1 mb-2.5">
+                <span>Posted {formatDate(review.created_at)}</span>
+                {review.updated_at && (
+                  <span className="italic text-[#FFEB3B]/90 ml-2">
+                    • Edited {formatDate(review.updated_at)}
                   </span>
-                ) : (
-                  <span>{formatDate(review.created_at)}</span>
                 )}
               </p>
+
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-[#be70f1]/20 border border-[#be70f1] text-[#be70f1]">
+                {TABLE_LABELS[entry.tableName] || entry.tableName}
+              </span>
             </div>
 
             {!isEditing ? (
@@ -155,7 +156,7 @@ export default function ReviewDetailModal({
                 </div>
 
                 {review.review_text ? (
-                  <p className="text-gray-200 text-[1.05rem] leading-relaxed whitespace-pre-wrap break-words m-0">
+                  <p className="text-gray-200 text-[1.05rem] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] m-0">
                     {review.review_text}
                   </p>
                 ) : (

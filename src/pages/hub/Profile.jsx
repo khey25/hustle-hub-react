@@ -272,7 +272,7 @@ const formatDate = (isoString) => {
                   <div
                     key={entry.recordId}
                     onClick={() => setSelectedReviewEntry(entry)}
-                    className="bg-[#1a1a1a] border-2 border-[#333] hover:border-[#be70f1] rounded-xl p-5 cursor-pointer transition-colors text-center md:text-right flex flex-col gap-2"
+                    className="min-w-0 overflow-hidden bg-[#1a1a1a] border-2 border-[#333] hover:border-[#be70f1] rounded-xl p-5 cursor-pointer transition-colors text-center md:text-right flex flex-col gap-2"
                   >
                     <div className="flex flex-col md:flex-row-reverse md:justify-between md:items-center gap-1">
                       <h3 className="text-[1.25rem] font-bold text-white m-0">
@@ -290,7 +290,7 @@ const formatDate = (isoString) => {
                       </span>
                     </div>
 
-                    <p className="text-gray-300 text-[0.95rem] m-0">
+                    <p className="text-gray-300 text-[0.95rem] m-0 break-words [overflow-wrap:anywhere] line-clamp-4">
                       {review.review_text || 'No written comment.'}
                     </p>
 
