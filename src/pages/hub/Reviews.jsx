@@ -138,7 +138,7 @@ export default function Reviews({ session, userRole }) {
                   onChange={(e) => setStarFilter(e.target.value)}
                   className="px-4 py-2.5 bg-[#1a1a1a] border-2 border-[#333] hover:border-[#be70f1] focus:border-[#be70f1] rounded-lg text-white font-semibold text-sm outline-none cursor-pointer transition-colors"
                 >
-                  <option value="all">Star Filter: All</option>
+                  <option value="all">Stars: All</option>
                   <option value="5">5 Stars</option>
                   <option value="4">4 Stars</option>
                   <option value="3">3 Stars</option>
@@ -151,7 +151,7 @@ export default function Reviews({ session, userRole }) {
                   onChange={(e) => setGameFilter(e.target.value)}
                   className="px-4 py-2.5 bg-[#1a1a1a] border-2 border-[#333] hover:border-[#be70f1] focus:border-[#be70f1] rounded-lg text-white font-semibold text-sm outline-none cursor-pointer transition-colors"
                 >
-                  <option value="all">Game Filter: All</option>
+                  <option value="all">Game: All</option>
                   <option value="gta">GTA Online</option>
                   <option value="stardew">Stardew Valley</option>
                 </select>
